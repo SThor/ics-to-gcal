@@ -1,0 +1,12 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//ics-to-gcal//Test Event//EN
+BEGIN:VEVENT
+UID:ics-to-gcal-test-20260909T231500@example.invalid
+DTSTAMP:20260909T210200Z
+DTSTART:20260909T211500Z
+DTEND:20260909T213000Z
+SUMMARY:ICS to GCal Test Event
+DESCRIPTION:Temporary test event created for the ICS to Google Calendar importer.
+END:VEVENT
+END:VCALENDAR
