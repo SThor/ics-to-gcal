@@ -1,9 +1,8 @@
 # ICS → Google Calendar Importer
 
-A small Windows tool: drop a `.ics` file onto it (or double-click and pick a
-file) and it imports every event into your primary Google Calendar. Re-running
-on the same file is safe — events are matched by their iCalendar UID and
-existing matching events are updated instead of duplicated.
+A small tool that imports `.ics` files into your primary Google Calendar.
+Re-running the same file is safe — events are matched by their iCalendar UID
+and existing matching events are updated instead of duplicated.
 
 ## 1. One-time Google Cloud setup (free)
 
@@ -19,41 +18,58 @@ existing matching events are updated instead of duplicated.
    - Name it anything, click **Create**.
    - Click **Download JSON**.
 5. Rename the downloaded file to `client_secret.json` and place it in this
-   project folder next to `import_ics.py` — and later, next to the built `.exe`.
+   project folder next to `import_ics.py` — and later, next to the packaged app.
 
 ## 2. Install dependencies
 
-```powershell
+```sh
 uv sync
 ```
 
-## 3. Run it directly (no build needed)
+The first run opens a browser window to sign in and grant calendar access. If
+the OAuth app remains in **Testing**, Google refresh tokens expire after seven
+days; move the app to **In production** for a long-lived grant (the
+unverified-app warning may still appear).
 
-```powershell
-uv run python import_ics.py path\to\file.ics
+## 3. Run directly
+
+```sh
+uv run python import_ics.py path/to/file.ics
 ```
 
-The first run opens a browser window to sign in and grant calendar access.
-A `token.json` is cached under `%LOCALAPPDATA%\ics-to-gcal\` so you won't be
-asked again. If the OAuth app remains in **Testing**, Google refresh tokens
-expire after seven days; move the app to **In production** for a long-lived
-grant (the unverified-app warning may still appear).
+With no file argument, the app opens its file chooser. The cached OAuth token
+is stored under `%LOCALAPPDATA%\ics-to-gcal\` on Windows and
+`~/ics-to-gcal/` on macOS and Linux.
 
-## 4. Build a standalone .exe
+## 4. Windows
+
+### Build a standalone app
 
 ```powershell
 uv run build
 ```
 
-The executable is created at `dist\ics-to-gcal\ics-to-gcal.exe`, and the build
-script copies `client_secret.json` there automatically. This folder build
-starts faster than a single-file executable.
+The executable is created at `dist\ics-to-gcal\ics-to-gcal.exe`, and the
+build command copies `client_secret.json` there automatically. This folder
+build starts faster than a single-file executable.
 
 Create a Desktop shortcut to `ics-to-gcal.exe`. You can then:
 
 - **Drag and drop** a `.ics` file onto the Desktop shortcut/exe to import it, or
 - **Double-click** the exe and pick a file from the dialog that appears.
 - Set the exe as the default application for `.ics` files, so that double-clicking any `.ics` file will automatically import it into Google Calendar.
+
+## 5. macOS and Linux
+
+### Build a standalone app
+
+```sh
+uv run build
+```
+
+The packaged app is created at `dist/ics-to-gcal/ics-to-gcal`. The build
+command copies `client_secret.json` beside it. PyInstaller builds for the
+platform on which the command runs.
 
 ## Notes / limitations
 

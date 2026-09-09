@@ -1,9 +1,9 @@
 [project]
 name = "ics-to-gcal"
 version = "0.1.0"
-description = "Add your description here"
+description = "Import iCalendar files into Google Calendar"
 authors = [
-    { name = "Silma Thoron", email = "paulgivel@gmail.com" }
+    { name = "Silma Thoron", email = "givel22@gmail.com" }
 ]
 requires-python = ">=3.13"
 dependencies = [
