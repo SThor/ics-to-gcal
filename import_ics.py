@@ -98,6 +98,19 @@ def to_event_datetime(value):
     return {"date": value.isoformat()}
 
 
+def event_time_zone(component, property_name):
+    property_value = component.get(property_name)
+    if property_value is None:
+        return None
+    time_zone = property_value.params.get("TZID")
+    if time_zone:
+        return str(time_zone)
+    value = property_value.dt
+    if isinstance(value, dt.datetime) and value.tzinfo is not None:
+        return getattr(value.tzinfo, "key", None) or "UTC"
+    return "UTC"
+
+
 def build_event_body(component):
     dtstart = component.get("dtstart")
     uid = component.get("uid")
@@ -134,6 +147,11 @@ def build_event_body(component):
     rrule = component.get("rrule")
     if rrule:
         body["recurrence"] = [f"RRULE:{rrule.to_ical().decode()}"]
+        if isinstance(start_value, dt.datetime):
+            time_zone = event_time_zone(component, "dtstart")
+            if time_zone:
+                body["start"]["timeZone"] = time_zone
+                body["end"]["timeZone"] = event_time_zone(component, "dtend") or time_zone
 
     return body
 
@@ -150,14 +168,21 @@ def import_or_update_event(service, body):
         service.events().import_(calendarId=calendar_id, body=body).execute()
         return 0, 1
 
-    update_body = {key: value for key, value in body.items() if key != "iCalUID"}
-    for match in matches:
-        service.events().update(
+    master_matches = [match for match in matches if "recurringEventId" not in match]
+    for match in master_matches:
+        patch_body = {key: value for key, value in body.items() if key != "iCalUID"}
+        for field in ("description", "location", "recurrence"):
+            if field not in body:
+                patch_body[field] = None
+        service.events().patch(
             calendarId=calendar_id,
             eventId=match["id"],
-            body=update_body,
+            body=patch_body,
         ).execute()
-    return len(matches), 0
+    if not master_matches:
+        service.events().import_(calendarId=calendar_id, body=body).execute()
+        return 0, 1
+    return len(master_matches), 0
 
 
 def main():
@@ -171,7 +196,10 @@ def main():
         with open(ics_path, "rb") as f:
             cal = Calendar.from_ical(f.read())
 
-        events = [c for c in cal.walk() if c.name == "VEVENT"]
+        events = [
+            c for c in cal.walk()
+            if c.name == "VEVENT" and c.get("recurrence-id") is None
+        ]
         if not events:
             show_message("ICS to Google Calendar", "No calendar events were found in this file.")
             return

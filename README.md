@@ -42,7 +42,6 @@ grant (the unverified-app warning may still appear).
 ## 4. Build a standalone .exe
 
 ```powershell
-uv add --dev pyinstaller
 uv run build
 ```
 
@@ -61,6 +60,6 @@ Create a Desktop shortcut to `ics-to-gcal.exe`. You can then:
 - Only `VEVENT` entries are imported (no alarms/reminders, todos, or timezone
   overrides beyond basic UTC/local conversion).
 - Recurring events (`RRULE`) are carried over, but per-instance exceptions
-  (`EXDATE`/modified occurrences) are not specially handled.
+   (`EXDATE`/`RECURRENCE-ID` modified occurrences) are skipped.
 - The OAuth consent screen may show an "unverified app" warning since this is
    a personal-use client — click **Advanced → Go to (app name)** to continue.
