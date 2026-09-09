@@ -5,6 +5,7 @@ import os
 import sys
 
 from google.auth.transport.requests import Request
+from google.auth.exceptions import RefreshError
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
@@ -32,8 +33,14 @@ def get_credentials():
         creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
+            try:
+                creds.refresh(Request())
+            except RefreshError:
+                creds = None
+                os.remove(TOKEN_PATH)
         else:
+            creds = None
+        if creds is None:
             client_secret_path = os.path.join(app_base_dir(), "client_secret.json")
             if not os.path.exists(client_secret_path):
                 raise SystemExit(
@@ -92,19 +99,28 @@ def to_event_datetime(value):
 
 
 def build_event_body(component):
+    dtstart = component.get("dtstart")
+    uid = component.get("uid")
+    if dtstart is None:
+        raise ValueError("VEVENT is missing DTSTART")
+    if uid is None:
+        raise ValueError("VEVENT is missing UID")
+
+    start_value = dtstart.dt
     body = {
-        "iCalUID": str(component.get("uid")),
+        "iCalUID": str(uid),
         "summary": str(component.get("summary", "")),
-        "start": to_event_datetime(component.get("dtstart").dt),
+        "start": to_event_datetime(start_value),
     }
     dtend = component.get("dtend")
     if dtend is not None:
         body["end"] = to_event_datetime(dtend.dt)
     else:
         duration = component.get("duration")
-        start_dt = component.get("dtstart").dt
-        if duration is not None and isinstance(start_dt, dt.datetime):
-            body["end"] = to_event_datetime(start_dt + duration.dt)
+        if duration is not None:
+            body["end"] = to_event_datetime(start_value + duration.dt)
+        elif isinstance(start_value, dt.date) and not isinstance(start_value, dt.datetime):
+            body["end"] = to_event_datetime(start_value + dt.timedelta(days=1))
         else:
             body["end"] = body["start"]
 
@@ -120,6 +136,28 @@ def build_event_body(component):
         body["recurrence"] = [f"RRULE:{rrule.to_ical().decode()}"]
 
     return body
+
+
+def import_or_update_event(service, body):
+    calendar_id = "primary"
+    matches = service.events().list(
+        calendarId=calendar_id,
+        iCalUID=body["iCalUID"],
+        maxResults=250,
+        showDeleted=False,
+    ).execute().get("items", [])
+    if not matches:
+        service.events().import_(calendarId=calendar_id, body=body).execute()
+        return 0, 1
+
+    update_body = {key: value for key, value in body.items() if key != "iCalUID"}
+    for match in matches:
+        service.events().update(
+            calendarId=calendar_id,
+            eventId=match["id"],
+            body=update_body,
+        ).execute()
+    return len(matches), 0
 
 
 def main():
@@ -142,14 +180,17 @@ def main():
         service = build("calendar", "v3", credentials=creds)
 
         imported = 0
+        updated = 0
         failures = []
         for component in events:
-            body = build_event_body(component)
+            label = str(component.get("summary", "(untitled event)"))
             try:
-                service.events().import_(calendarId="primary", body=body).execute()
-                imported += 1
+                body = build_event_body(component)
+                updated_count, imported_count = import_or_update_event(service, body)
+                updated += updated_count
+                imported += imported_count
             except Exception as exc:  # noqa: BLE001 - report and continue with remaining events
-                failures.append(f"{body.get('summary')}: {exc}")
+                failures.append(f"{label}: {exc}")
 
         if failures:
             details = "\n".join(failures[:3])
@@ -157,14 +198,14 @@ def main():
                 details += f"\n...and {len(failures) - 3} more."
             show_message(
                 "Import completed with errors",
-                f"Imported or updated {imported} event(s).\n\n"
+                f"Imported {imported} event(s) and updated {updated} event(s).\n\n"
                 f"{len(failures)} event(s) failed:\n{details}",
                 error=True,
             )
         else:
             show_message(
                 "Import complete",
-                f"Imported or updated {imported} event(s) in Google Calendar.",
+                f"Imported {imported} event(s) and updated {updated} event(s) in Google Calendar.",
             )
     except SystemExit as exc:
         show_message("Import failed", str(exc), error=True)

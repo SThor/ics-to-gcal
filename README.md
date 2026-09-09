@@ -2,8 +2,8 @@
 
 A small Windows tool: drop a `.ics` file onto it (or double-click and pick a
 file) and it imports every event into your primary Google Calendar. Re-running
-on the same file is safe — events are matched by their iCalendar UID, so
-duplicates are updated instead of re-created.
+on the same file is safe — events are matched by their iCalendar UID and
+existing matching events are updated instead of duplicated.
 
 ## 1. One-time Google Cloud setup (free)
 
@@ -19,8 +19,7 @@ duplicates are updated instead of re-created.
    - Name it anything, click **Create**.
    - Click **Download JSON**.
 5. Rename the downloaded file to `client_secret.json` and place it in this
-   folder (`~/dev/ics-to-gcal`) next to `import_ics.py` — and later, next to
-   the built `.exe`.
+   project folder next to `import_ics.py` — and later, next to the built `.exe`.
 
 ## 2. Install dependencies
 
@@ -36,7 +35,9 @@ uv run python import_ics.py path\to\file.ics
 
 The first run opens a browser window to sign in and grant calendar access.
 A `token.json` is cached under `%LOCALAPPDATA%\ics-to-gcal\` so you won't be
-asked again.
+asked again. If the OAuth app remains in **Testing**, Google refresh tokens
+expire after seven days; move the app to **In production** for a long-lived
+grant (the unverified-app warning may still appear).
 
 ## 4. Build a standalone .exe
 
@@ -61,5 +62,5 @@ create a Desktop shortcut to `ics-to-gcal.exe`. You can then:
   overrides beyond basic UTC/local conversion).
 - Recurring events (`RRULE`) are carried over, but per-instance exceptions
   (`EXDATE`/modified occurrences) are not specially handled.
-- The OAuth consent screen will show an "unverified app" warning since this is
-  a personal-use client — click **Advanced → Go to (app name)** to continue.
+- The OAuth consent screen may show an "unverified app" warning since this is
+   a personal-use client — click **Advanced → Go to (app name)** to continue.
