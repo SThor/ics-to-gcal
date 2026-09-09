@@ -1,0 +1,14 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+*.spec
+
+# Google OAuth credentials
+client_secret.json
+
+# Virtual environments
+.venv
