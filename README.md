@@ -43,14 +43,14 @@ grant (the unverified-app warning may still appear).
 
 ```powershell
 uv add --dev pyinstaller
-uv run pyinstaller --noconsole --name ics-to-gcal import_ics.py
+uv run build
 ```
 
-The executable is created at `dist\ics-to-gcal\ics-to-gcal.exe`. This folder
-build starts faster than a single-file executable.
+The executable is created at `dist\ics-to-gcal\ics-to-gcal.exe`, and the build
+script copies `client_secret.json` there automatically. This folder build
+starts faster than a single-file executable.
 
-Copy `client_secret.json` into `dist\ics-to-gcal\`, next to the `.exe`, then
-create a Desktop shortcut to `ics-to-gcal.exe`. You can then:
+Create a Desktop shortcut to `ics-to-gcal.exe`. You can then:
 
 - **Drag and drop** a `.ics` file onto the Desktop shortcut/exe to import it, or
 - **Double-click** the exe and pick a file from the dialog that appears.
