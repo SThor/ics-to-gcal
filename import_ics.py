@@ -1,0 +1,176 @@
+"""Import events from a .ics file into Google Calendar using the Calendar API's
+events.import method (dedupes by iCalUID, so re-running is safe)."""
+import datetime as dt
+import os
+import sys
+
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
+from icalendar import Calendar
+
+SCOPES = ["https://www.googleapis.com/auth/calendar.events"]
+
+# Files live in %LOCALAPPDATA%\ics-to-gcal so the packaged .exe can write there
+# even when it's run from the Desktop or another read-only-ish location.
+APP_DIR = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "ics-to-gcal")
+TOKEN_PATH = os.path.join(APP_DIR, "token.json")
+
+
+def app_base_dir():
+    """Directory the client_secret.json is expected to live in."""
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def get_credentials():
+    os.makedirs(APP_DIR, exist_ok=True)
+    creds = None
+    if os.path.exists(TOKEN_PATH):
+        creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            client_secret_path = os.path.join(app_base_dir(), "client_secret.json")
+            if not os.path.exists(client_secret_path):
+                raise SystemExit(
+                    f"Missing {client_secret_path}\n"
+                    "Download your Google Cloud OAuth client secret and place it "
+                    "next to this program as 'client_secret.json'."
+                )
+            flow = InstalledAppFlow.from_client_secrets_file(client_secret_path, SCOPES)
+            creds = flow.run_local_server(port=0)
+        with open(TOKEN_PATH, "w", encoding="utf-8") as f:
+            f.write(creds.to_json())
+    return creds
+
+
+def show_message(title, message, error=False):
+    """Show feedback when the app is launched without a console."""
+    import tkinter as tk
+    from tkinter import messagebox
+
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        if error:
+            messagebox.showerror(title, message, parent=root)
+        else:
+            messagebox.showinfo(title, message, parent=root)
+    finally:
+        root.destroy()
+
+
+def pick_ics_file():
+    if len(sys.argv) > 1:
+        return sys.argv[1]
+    import tkinter as tk
+    from tkinter import filedialog
+
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        return filedialog.askopenfilename(
+            title="Choose a .ics file to import",
+            filetypes=[("iCalendar files", "*.ics"), ("All files", "*.*")],
+            parent=root,
+        )
+    finally:
+        root.destroy()
+
+
+def to_event_datetime(value):
+    """Convert an icalendar date/datetime value to a Google Calendar event date field."""
+    if isinstance(value, dt.datetime):
+        if value.tzinfo is None:
+            value = value.astimezone()  # assume local system timezone
+        return {"dateTime": value.isoformat()}
+    return {"date": value.isoformat()}
+
+
+def build_event_body(component):
+    body = {
+        "iCalUID": str(component.get("uid")),
+        "summary": str(component.get("summary", "")),
+        "start": to_event_datetime(component.get("dtstart").dt),
+    }
+    dtend = component.get("dtend")
+    if dtend is not None:
+        body["end"] = to_event_datetime(dtend.dt)
+    else:
+        duration = component.get("duration")
+        start_dt = component.get("dtstart").dt
+        if duration is not None and isinstance(start_dt, dt.datetime):
+            body["end"] = to_event_datetime(start_dt + duration.dt)
+        else:
+            body["end"] = body["start"]
+
+    description = component.get("description")
+    if description:
+        body["description"] = str(description)
+    location = component.get("location")
+    if location:
+        body["location"] = str(location)
+
+    rrule = component.get("rrule")
+    if rrule:
+        body["recurrence"] = [f"RRULE:{rrule.to_ical().decode()}"]
+
+    return body
+
+
+def main():
+    try:
+        ics_path = pick_ics_file()
+        if not ics_path:
+            return
+        if not os.path.exists(ics_path):
+            raise RuntimeError(f"File not found: {ics_path}")
+
+        with open(ics_path, "rb") as f:
+            cal = Calendar.from_ical(f.read())
+
+        events = [c for c in cal.walk() if c.name == "VEVENT"]
+        if not events:
+            show_message("ICS to Google Calendar", "No calendar events were found in this file.")
+            return
+
+        creds = get_credentials()
+        service = build("calendar", "v3", credentials=creds)
+
+        imported = 0
+        failures = []
+        for component in events:
+            body = build_event_body(component)
+            try:
+                service.events().import_(calendarId="primary", body=body).execute()
+                imported += 1
+            except Exception as exc:  # noqa: BLE001 - report and continue with remaining events
+                failures.append(f"{body.get('summary')}: {exc}")
+
+        if failures:
+            details = "\n".join(failures[:3])
+            if len(failures) > 3:
+                details += f"\n...and {len(failures) - 3} more."
+            show_message(
+                "Import completed with errors",
+                f"Imported or updated {imported} event(s).\n\n"
+                f"{len(failures)} event(s) failed:\n{details}",
+                error=True,
+            )
+        else:
+            show_message(
+                "Import complete",
+                f"Imported or updated {imported} event(s) in Google Calendar.",
+            )
+    except SystemExit as exc:
+        show_message("Import failed", str(exc), error=True)
+    except Exception as exc:  # noqa: BLE001 - show unexpected errors in the no-console app
+        show_message("Import failed", str(exc), error=True)
+
+
+if __name__ == "__main__":
+    main()
